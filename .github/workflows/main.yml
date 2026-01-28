@@ -1,0 +1,60 @@
+name: Twitter Monitor
+
+on:
+  schedule:
+    # 每 10 分钟运行一次
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+    # 允许手动触发
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # 允许提交代码（更新 last_id.txt）
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+
+    - name: Install dependencies
+      run: |
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+        # 如果文件在 x 目录下（兼容性处理）
+        if [ -f x/requirements.txt ]; then pip install -r x/requirements.txt; fi
+
+    - name: Run monitor script
+      env:
+        TWITTER_USER: ${{ secrets.TWITTER_USER }}
+        DINGTALK_WEBHOOK: ${{ secrets.DINGTALK_WEBHOOK }}
+      run: |
+        # 尝试检测脚本位置并运行
+        if [ -f twitter_monitor.py ]; then
+          python twitter_monitor.py
+        elif [ -f x/twitter_monitor.py ]; then
+          python x/twitter_monitor.py
+        else
+          echo "Error: twitter_monitor.py not found!"
+          exit 1
+        fi
+
+    - name: Commit and push if changed
+      run: |
+        git config --global user.name 'GitHub Action'
+        git config --global user.email 'action@github.com'
+        
+        # 暂存所有变更（主要针对 last_id.txt）
+        git add .
+        
+        # 检查是否有变更
+        if git diff --staged --quiet; then
+          echo "No changes to commit"
+        else
+          git commit -m "Update last_id.json [skip ci]"
+          git push
+        fi
