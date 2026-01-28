@@ -16,13 +16,22 @@ WEBHOOK_URL = os.environ.get('DINGTALK_WEBHOOK')
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 LAST_ID_FILE = os.path.join(BASE_DIR, 'last_id.json')
 
-# Nitter 实例列表
+# Nitter 实例列表 (更新更可靠的实例)
 NITTER_INSTANCES = [
-    'https://nitter.net',
-    'https://nitter.cz',
-    'https://nitter.io',
-    'https://nitter.privacydev.net',
-    'https://nitter.projectsegfau.lt'
+    'https://nitter.hu',
+    'https://nitter.moomoo.me',
+    'https://nitter.no-logs.com',
+    'https://nitter.poast.org',
+    'https://nitter.privacy.com.de',
+    'https://nitter.rawbit.ninja'
+]
+
+# RSSHub 实例列表 (作为备选，通常比 Nitter 稳定)
+RSSHUB_INSTANCES = [
+    'https://rsshub.app',
+    'https://rsshub.rssbuddy.com',
+    'https://rss.arturpaiva.top',
+    'https://hub.076.ne.jp'
 ]
 
 def get_headers():
@@ -32,33 +41,43 @@ def get_headers():
 
 def get_latest_tweet(user):
     """
-    尝试从 Nitter 实例获取最新推文 RSS
+    尝试从 Nitter 或 RSSHub 获取最新推文 RSS
     """
+    # 策略 1: 尝试 Nitter
     instances = NITTER_INSTANCES.copy()
     random.shuffle(instances)
 
     for instance in instances:
         rss_url = f"{instance}/{user}/rss"
-        # print(f"正在尝试获取 {user}: {rss_url}")
-        
         try:
             resp = requests.get(rss_url, headers=get_headers(), timeout=10)
             if resp.status_code == 200:
                 feed = feedparser.parse(resp.content)
                 if feed.entries:
-                    print(f"[{user}] 成功从 {instance} 获取数据")
+                    print(f"[{user}] 成功通过 Nitter ({instance}) 获取数据")
                     return feed.entries[0]
-                else:
-                    print(f"[{user}] {instance} 返回空数据")
-            else:
-                pass
-                # print(f"[{user}] {instance} 响应状态码: {resp.status_code}")
-                
-        except Exception as e:
-            pass
-            # print(f"[{user}] 访问 {instance} 失败: {e}")
+        except Exception:
+            continue
+
+    # 策略 2: 尝试 RSSHub (如果 Nitter 全部失败)
+    print(f"[{user}] Nitter 实例全部失效，尝试 RSSHub...")
+    rsshub_instances = RSSHUB_INSTANCES.copy()
+    random.shuffle(rsshub_instances)
+    
+    for instance in rsshub_instances:
+        # RSSHub 的 Twitter 路由
+        rss_url = f"{instance}/twitter/user/{user}"
+        try:
+            resp = requests.get(rss_url, headers=get_headers(), timeout=15)
+            if resp.status_code == 200:
+                feed = feedparser.parse(resp.content)
+                if feed.entries:
+                    print(f"[{user}] 成功通过 RSSHub ({instance}) 获取数据")
+                    return feed.entries[0]
+        except Exception:
+            continue
             
-    print(f"[{user}] 所有 Nitter 实例均尝试失败")
+    print(f"[{user}] 所有实例均尝试失败")
     return None
 
 def send_dingtalk(webhook_url, tweet, user):
