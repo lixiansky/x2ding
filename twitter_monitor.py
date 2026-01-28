@@ -82,38 +82,61 @@ def scrape_nitter_with_playwright(target):
                 soup = BeautifulSoup(html, 'html.parser')
                 
                 # Nitter 页面推文解析逻辑
-                # 推文容器通常是 timeline-item
                 items = soup.select('.timeline-item')
                 if not items:
                     print(f"[{target}] 在实例 {instance} 上未发现推文内容")
                     context.close()
                     continue
                 
-                # 获取第一条有效推文（排除置顶或无关项，通常第一条就是）
-                first_item = items[0]
-                
-                # 提取关键信息
-                content_el = first_item.select_one('.tweet-content')
-                link_el = first_item.select_one('.tweet-link')
-                date_el = first_item.select_one('.tweet-date a')
-                author_el = first_item.select_one('.username')
+                # 扫描策略：扫描前 5 条推文，找到第一条非置顶的、有效的内容
+                valid_tweets = []
+                for item in items[:8]: # 扩大扫描范围到前 8 条
+                    # 1. 检查是否是置顶推文
+                    is_pinned = item.select_one('.pinned') or "Pinned" in item.get_text()
+                    if is_pinned:
+                        print(f"[{target}] 发现置顶推文，跳过扫描")
+                        continue
+                    
+                    # 2. 检查是否是转发
+                    is_retweet = item.select_one('.retweet-header') is not None
+                    
+                    # 提取关键信息
+                    content_el = item.select_one('.tweet-content')
+                    link_el = item.select_one('.tweet-link')
+                    date_el = item.select_one('.tweet-date a')
+                    author_el = item.select_one('.username')
 
-                if not content_el or not link_el:
+                    if not content_el or not link_el:
+                        continue
+
+                    # 提取推文 ID (从 /user/status/123...#m 中提取数字)
+                    link_href = link_el.get('href', '')
+                    tweet_id = link_href.split('/status/')[-1].split('#')[0] if '/status/' in link_href else link_href
+
+                    tweet_data = {
+                        'content': content_el.get_text(strip=True),
+                        'link': instance.rstrip('/') + link_href,
+                        'published': date_el.get('title', '') if date_el else 'Unknown Time',
+                        'author': author_el.get_text(strip=True) if author_el else keyword,
+                        'guid': tweet_id,
+                        'is_retweet': is_retweet
+                    }
+                    valid_tweets.append(tweet_data)
+                    
+                    # 只要找到了第一个非置顶的有效推文，我们就认为它是当前“最新的”
+                    if len(valid_tweets) >= 1:
+                        break
+
+                if valid_tweets:
+                    tweet = valid_tweets[0]
+                    retweet_tag = " [转发]" if tweet['is_retweet'] else ""
+                    print(f"[{target}] 成功从 {instance} 抓取{retweet_tag}推文: {tweet['guid']}")
                     context.close()
-                    continue
+                    browser.close()
+                    return tweet
 
-                tweet_data = {
-                    'content': content_el.get_text(strip=True),
-                    'link': instance.rstrip('/') + link_el.get('href', ''),
-                    'published': date_el.get('title', '') if date_el else 'Unknown Time',
-                    'author': author_el.get_text(strip=True) if author_el else keyword,
-                    'guid': link_el.get('href', '') # 唯一标识
-                }
-
-                print(f"[{target}] 成功从 {instance} 抓取推文")
+                print(f"[{target}] {instance} 页面上未找到符合条件的非置顶推文")
                 context.close()
-                browser.close()
-                return tweet_data
 
             except Exception as e:
                 print(f"[{target}] 访问 {instance} 出错: {e}")
@@ -130,7 +153,8 @@ def send_dingtalk(webhook_url, tweet, target):
         print("未配置 DINGTALK_WEBHOOK，跳过发送")
         return False
 
-    title = f"【Twitter】监控提醒: {target}"
+    retweet_flag = " [转发]" if tweet.get('is_retweet') else ""
+    title = f"【Twitter】{target}{retweet_flag} 发布了新动态"
     text = f"""### {title}
     
 **作者**: {tweet['author']}
@@ -140,7 +164,7 @@ def send_dingtalk(webhook_url, tweet, target):
 {tweet['content']}
     
 [查看详情 (Nitter)]({tweet['link']})
-[查看详情 (Twitter)]({tweet['link'].replace('xcancel.com', 'twitter.com').replace('nitter.net', 'twitter.com').replace('nitter.hu', 'twitter.com')})
+[查看详情 (Twitter)]({tweet['link'].replace('xcancel.com', 'twitter.com').replace('nitter.net', 'twitter.com').replace('nitter.hu', 'twitter.com').replace('nitter.privacyredirect.com', 'twitter.com')})
     """
 
     data = {
@@ -153,8 +177,15 @@ def send_dingtalk(webhook_url, tweet, target):
 
     try:
         resp = requests.post(webhook_url, json=data, timeout=10)
-        return resp.json().get('errcode') == 0
-    except Exception:
+        result = resp.json()
+        if result.get('errcode') == 0:
+            print(f"[{target}] 钉钉推送成功")
+            return True
+        else:
+            print(f"[{target}] 钉钉推送失败: {result}")
+            return False
+    except Exception as e:
+        print(f"[{target}] 钉钉请求异常: {e}")
         return False
 
 def main():
