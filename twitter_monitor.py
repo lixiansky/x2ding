@@ -99,7 +99,18 @@ def scrape_nitter_with_playwright(target):
                     
                     # 2. 检查是否是转发
                     is_retweet = item.select_one('.retweet-header') is not None
-                    
+
+                    # 3. 提取图片
+                    images = []
+                    # Nitter 的图片通常在 .attachment.image 或 .tweet-image 中
+                    img_els = item.select('.attachment.image img, .tweet-image img')
+                    for img in img_els:
+                        src = img.get('src', '')
+                        if src:
+                            # 转换相对路径
+                            full_src = instance.rstrip('/') + src if src.startswith('/') else src
+                            images.append(full_src)
+
                     # 提取关键信息
                     content_el = item.select_one('.tweet-content')
                     link_el = item.select_one('.tweet-link')
@@ -119,7 +130,8 @@ def scrape_nitter_with_playwright(target):
                         'published': date_el.get('title', '') if date_el else 'Unknown Time',
                         'author': author_el.get_text(strip=True) if author_el else keyword,
                         'guid': tweet_id,
-                        'is_retweet': is_retweet
+                        'is_retweet': is_retweet,
+                        'images': images
                     }
                     valid_tweets.append(tweet_data)
                     
@@ -153,18 +165,25 @@ def send_dingtalk(webhook_url, tweet, target):
         print("未配置 DINGTALK_WEBHOOK，跳过发送")
         return False
 
-    retweet_flag = " [转发]" if tweet.get('is_retweet') else ""
-    title = f"【Twitter】{target}{retweet_flag} 发布了新动态"
-    text = f"""### {title}
+    retweet_flag = " 🔃 转发了" if tweet.get('is_retweet') else " 📝 发布了"
     
+    # 构造图片 Markdown
+    images_md = ""
+    if tweet.get('images'):
+        for img_url in tweet['images']:
+            images_md += f"\n\n![image]({img_url})"
+
+    title = f"Twitter 监控: {target}"
+    text = f"""## {target}{retweet_flag} 推文
+---
 **作者**: {tweet['author']}
 **时间**: {tweet['published']}
-    
-**内容**: 
-{tweet['content']}
-    
-[查看详情 (Nitter)]({tweet['link']})
-[查看详情 (Twitter)]({tweet['link'].replace('xcancel.com', 'twitter.com').replace('nitter.net', 'twitter.com').replace('nitter.hu', 'twitter.com').replace('nitter.privacyredirect.com', 'twitter.com')})
+
+> {tweet['content']}
+{images_md}
+
+---
+[🔗 Nitter 原文]({tweet['link']}) | [🔗 Twitter(X) 原文]({tweet['link'].replace('xcancel.com', 'twitter.com').replace('nitter.net', 'twitter.com').replace('nitter.hu', 'twitter.com').replace('nitter.privacyredirect.com', 'twitter.com').replace('nitter.poast.org', 'twitter.com')})
     """
 
     data = {
