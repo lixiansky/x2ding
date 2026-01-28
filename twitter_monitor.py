@@ -16,27 +16,30 @@ WEBHOOK_URL = os.environ.get('DINGTALK_WEBHOOK')
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 LAST_ID_FILE = os.path.join(BASE_DIR, 'last_id.json')
 
-# Nitter 实例列表 (更新更可靠的实例)
+# Nitter 实例列表 (精心筛选的一批当前较活跃的实例)
 NITTER_INSTANCES = [
-    'https://nitter.hu',
-    'https://nitter.moomoo.me',
-    'https://nitter.no-logs.com',
     'https://nitter.poast.org',
     'https://nitter.privacy.com.de',
-    'https://nitter.rawbit.ninja'
+    'https://nitter.hu',
+    'https://nitter.rawbit.ninja',
+    'https://nitter.no-logs.com',
+    'https://nitter.moomoo.me',
+    'https://nitter.net',  # 官方实例，作为垫底
 ]
 
-# RSSHub 实例列表 (作为备选，通常比 Nitter 稳定)
+# RSSHub 实例列表 (增加更多公共节点)
 RSSHUB_INSTANCES = [
     'https://rsshub.app',
     'https://rsshub.rssbuddy.com',
     'https://rss.arturpaiva.top',
-    'https://hub.076.ne.jp'
+    'https://hub.076.ne.jp',
+    'https://rsshub.anyant.com'
 ]
 
 def get_headers():
     return {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+        'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8'
     }
 
 def get_latest_tweet(user):
@@ -48,15 +51,20 @@ def get_latest_tweet(user):
     random.shuffle(instances)
 
     for instance in instances:
-        rss_url = f"{instance}/{user}/rss"
+        rss_url = f"{instance.rstrip('/')}/{user}/rss"
         try:
-            resp = requests.get(rss_url, headers=get_headers(), timeout=10)
+            resp = requests.get(rss_url, headers=get_headers(), timeout=15)
             if resp.status_code == 200:
                 feed = feedparser.parse(resp.content)
                 if feed.entries:
                     print(f"[{user}] 成功通过 Nitter ({instance}) 获取数据")
                     return feed.entries[0]
-        except Exception:
+                else:
+                    print(f"[{user}] Nitter ({instance}) 解析成功但列表为空")
+            else:
+                print(f"[{user}] Nitter ({instance}) 状态码异常: {resp.status_code}")
+        except Exception as e:
+            # print(f"[{user}] Nitter ({instance}) 连接失败: {type(e).__name__}")
             continue
 
     # 策略 2: 尝试 RSSHub (如果 Nitter 全部失败)
@@ -65,19 +73,24 @@ def get_latest_tweet(user):
     random.shuffle(rsshub_instances)
     
     for instance in rsshub_instances:
-        # RSSHub 的 Twitter 路由
-        rss_url = f"{instance}/twitter/user/{user}"
+        # RSSHub 的 Twitter 路由，尝试不同的过滤参数以规避限制
+        rss_url = f"{instance.rstrip('/')}/twitter/user/{user}"
         try:
-            resp = requests.get(rss_url, headers=get_headers(), timeout=15)
+            resp = requests.get(rss_url, headers=get_headers(), timeout=20)
             if resp.status_code == 200:
                 feed = feedparser.parse(resp.content)
                 if feed.entries:
                     print(f"[{user}] 成功通过 RSSHub ({instance}) 获取数据")
                     return feed.entries[0]
-        except Exception:
+                else:
+                    print(f"[{user}] RSSHub ({instance}) 解析成功但列表为空")
+            else:
+                print(f"[{user}] RSSHub ({instance}) 状态码异常: {resp.status_code}")
+        except Exception as e:
+            # print(f"[{user}] RSSHub ({instance}) 连接失败: {type(e).__name__}")
             continue
             
-    print(f"[{user}] 所有实例均尝试失败")
+    print(f"[{user}] 所有实例均尝试失败，建议稍后重试或检查博主名是否正确")
     return None
 
 def send_dingtalk(webhook_url, tweet, user):
