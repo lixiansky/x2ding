@@ -167,11 +167,13 @@ def send_dingtalk(webhook_url, tweet, target):
 
     retweet_flag = " 🔃 转发了" if tweet.get('is_retweet') else " 📝 发布了"
     
-    # 构造图片 Markdown
+    # 构造图片 Markdown (使用 weserv.nl 代理解决国内钉钉加载不出的问题)
     images_md = ""
     if tweet.get('images'):
         for img_url in tweet['images']:
-            images_md += f"\n\n![image]({img_url})"
+            # 编码 URL 并包装代理
+            proxied_url = f"https://images.weserv.nl/?url={requests.utils.quote(img_url.replace('https://', '').replace('http://', ''))}"
+            images_md += f"\n\n![image]({proxied_url})"
 
     title = f"Twitter 监控: {target}"
     text = f"""## {target}{retweet_flag} 推文
