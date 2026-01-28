@@ -26,33 +26,23 @@ NITTER_INSTANCES = [
     'https://nitter.net',
 ]
 
-def get_dynamic_instances():
+INSTANCES_FILE = os.path.join(BASE_DIR, 'instances.json')
+
+def load_instances():
     """
-    从 status.d420.de 实时获取健康的 Nitter 实例
+    从本地缓存加载健康的 Nitter 实例
     """
-    api_url = "https://status.d420.de/api/v1/instances"
-    try:
-        print("[系统] 正在从状态页同步健康实例...")
-        resp = requests.get(api_url, timeout=15)
-        if resp.status_code == 200:
-            data = resp.json()
-            hosts = data.get('hosts', [])
-            # 筛选准则：健康、是非黑名单、优先有 RSS (虽然我们不用 RSS，但通常这类实例更全)
-            # 按 points 降序排序，分高者优先
-            healthy_hosts = [
-                h['url'].rstrip('/') for h in hosts 
-                if h.get('healthy') and not h.get('is_bad_host')
-            ]
-            # 按分数从高到低排列
-            healthy_hosts.sort(key=lambda x: next((h.get('points', 0) for h in hosts if h['url'].rstrip('/') == x), 0), reverse=True)
-            
-            if healthy_hosts:
-                print(f"[系统] 成功发现 {len(healthy_hosts)} 个健康实例")
-                return healthy_hosts
-    except Exception as e:
-        print(f"[系统] 动态获取实例失败: {e}")
+    if os.path.exists(INSTANCES_FILE):
+        try:
+            with open(INSTANCES_FILE, 'r', encoding='utf-8') as f:
+                instances = json.load(f)
+                if instances and isinstance(instances, list):
+                    print(f"[系统] 成功从本地缓存加载 {len(instances)} 个实例")
+                    return instances
+        except Exception as e:
+            print(f"[系统] 加载实例缓存失败: {e}")
     
-    print("[系统] 采用内置兜底实例列表")
+    print("[系统] 缓存不存在或损坏，采用内置兜底实例列表")
     return NITTER_INSTANCES
 
 def scrape_nitter_with_playwright(target, dynamic_instances=None):
@@ -245,8 +235,8 @@ def main():
 
     print(f"[{datetime.now()}] 启动 Playwright 反检测监控模式...")
     
-    # 动态获取最新可用实例
-    dynamic_instances = get_dynamic_instances()
+    # 从本地缓存加载可用实例
+    instances = load_instances()
 
     # 加载状态
     if os.path.exists(LAST_ID_FILE):
@@ -259,7 +249,7 @@ def main():
     updated = False
     for target in USERS:
         try:
-            tweet = scrape_nitter_with_playwright(target, dynamic_instances)
+            tweet = scrape_nitter_with_playwright(target, instances)
             if not tweet:
                 continue
             
