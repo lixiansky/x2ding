@@ -16,8 +16,10 @@ WEBHOOK_URL = os.environ.get('DINGTALK_WEBHOOK')
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 LAST_ID_FILE = os.path.join(BASE_DIR, 'last_id.json')
 
-# Nitter 实例列表 (根据 Wiki 及健康状态筛选)
+# Nitter 实例列表 (综合 Wiki 及 status.d420.de 实时状态)
 NITTER_INSTANCES = [
+    'https://xcancel.com',
+    'https://nitter.privacyredirect.com',
     'https://nitter.poast.org',
     'https://nitter.hu',
     'https://nitter.moomoo.me',
