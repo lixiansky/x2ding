@@ -24,9 +24,10 @@ jobs:
 
     - name: Install dependencies
       run: |
+        python -m pip install --upgrade pip
         if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-        # 如果文件在 x 目录下（兼容性处理）
         if [ -f x/requirements.txt ]; then pip install -r x/requirements.txt; fi
+        npx playwright install --with-deps chromium
 
     - name: Run monitor script
       env:
