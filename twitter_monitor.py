@@ -16,30 +16,36 @@ WEBHOOK_URL = os.environ.get('DINGTALK_WEBHOOK')
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 LAST_ID_FILE = os.path.join(BASE_DIR, 'last_id.json')
 
-# Nitter 实例列表 (精心筛选的一批当前较活跃的实例)
+# Nitter 实例列表 (根据 Wiki 及健康状态筛选)
 NITTER_INSTANCES = [
     'https://nitter.poast.org',
-    'https://nitter.privacy.com.de',
     'https://nitter.hu',
-    'https://nitter.rawbit.ninja',
-    'https://nitter.no-logs.com',
     'https://nitter.moomoo.me',
-    'https://nitter.net',  # 官方实例，作为垫底
+    'https://nitter.privacydev.net',
+    'https://nitter.rawbit.ninja',
+    'https://nitter.perennialte.ch',
+    'https://nitter.projectsegfau.lt',
+    'https://nitter.privacy.com.de',
+    'https://nitter.no-logs.com',
+    'https://nitter.net',  # 兜底
 ]
 
-# RSSHub 实例列表 (增加更多公共节点)
+# RSSHub 实例列表 (更广泛的公共节点)
 RSSHUB_INSTANCES = [
     'https://rsshub.app',
     'https://rsshub.rssbuddy.com',
     'https://rss.arturpaiva.top',
     'https://hub.076.ne.jp',
-    'https://rsshub.anyant.com'
+    'https://rsshub.anyant.com',
+    'https://rsshub.icu'
 ]
 
 def get_headers():
     return {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-        'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8'
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'application/rss+xml, application/xml;q=0.9, text/xml;q=0.8, */*;q=0.7',
+        'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+        'Cache-Control': 'no-cache'
     }
 
 def get_latest_tweet(user):
@@ -53,44 +59,44 @@ def get_latest_tweet(user):
     for instance in instances:
         rss_url = f"{instance.rstrip('/')}/{user}/rss"
         try:
-            resp = requests.get(rss_url, headers=get_headers(), timeout=15)
+            # 增加超时时间
+            resp = requests.get(rss_url, headers=get_headers(), timeout=20)
             if resp.status_code == 200:
                 feed = feedparser.parse(resp.content)
                 if feed.entries:
                     print(f"[{user}] 成功通过 Nitter ({instance}) 获取数据")
                     return feed.entries[0]
                 else:
-                    print(f"[{user}] Nitter ({instance}) 解析成功但列表为空")
+                    # Nitter 虽然返回了 200，但可能被 Twitter 拦截导致没有条目
+                    print(f"[{user}] Nitter ({instance}) 返回了 200 但没有发现推文（可能被 Twitter 限制）")
             else:
-                print(f"[{user}] Nitter ({instance}) 状态码异常: {resp.status_code}")
+                print(f"[{user}] Nitter ({instance}) 异常，HTTP 状态码: {resp.status_code}")
         except Exception as e:
-            # print(f"[{user}] Nitter ({instance}) 连接失败: {type(e).__name__}")
+            # print(f"[{user}] Nitter ({instance}) 连接异常: {str(e)}")
             continue
 
     # 策略 2: 尝试 RSSHub (如果 Nitter 全部失败)
-    print(f"[{user}] Nitter 实例全部失效，尝试 RSSHub...")
+    print(f"[{user}] Nitter 实例当前不可用或受限，尝试切换至 RSSHub...")
     rsshub_instances = RSSHUB_INSTANCES.copy()
     random.shuffle(rsshub_instances)
     
     for instance in rsshub_instances:
-        # RSSHub 的 Twitter 路由，尝试不同的过滤参数以规避限制
         rss_url = f"{instance.rstrip('/')}/twitter/user/{user}"
         try:
-            resp = requests.get(rss_url, headers=get_headers(), timeout=20)
+            resp = requests.get(rss_url, headers=get_headers(), timeout=25)
             if resp.status_code == 200:
                 feed = feedparser.parse(resp.content)
                 if feed.entries:
                     print(f"[{user}] 成功通过 RSSHub ({instance}) 获取数据")
                     return feed.entries[0]
                 else:
-                    print(f"[{user}] RSSHub ({instance}) 解析成功但列表为空")
+                    print(f"[{user}] RSSHub ({instance}) 未返回数据条目")
             else:
-                print(f"[{user}] RSSHub ({instance}) 状态码异常: {resp.status_code}")
-        except Exception as e:
-            # print(f"[{user}] RSSHub ({instance}) 连接失败: {type(e).__name__}")
+                print(f"[{user}] RSSHub ({instance}) 异常，HTTP 状态码: {resp.status_code}")
+        except Exception:
             continue
             
-    print(f"[{user}] 所有实例均尝试失败，建议稍后重试或检查博主名是否正确")
+    print(f"[{user}] 所有 Nitter 和 RSSHub 实例在本次运行中均未成功获取数据。")
     return None
 
 def send_dingtalk(webhook_url, tweet, user):
