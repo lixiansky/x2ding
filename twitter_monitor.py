@@ -28,6 +28,15 @@ NITTER_INSTANCES = [
 
 INSTANCES_FILE = os.path.join(BASE_DIR, 'instances.json')
 
+def get_random_user_agent():
+    ua_list = [
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Edge/120.0.0.0"
+    ]
+    return random.choice(ua_list)
+
 def load_instances():
     """
     从本地缓存加载健康的 Nitter 实例
