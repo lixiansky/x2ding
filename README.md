@@ -39,7 +39,7 @@ repo-root/
 
 | Secret Name | Value 示例 | 说明 |
 |-------------|------------|------|
-| `TWITTER_USER` | `elonmusk` 或 `elonmusk,NASA` | 你想监控的 Twitter 用户名。**多个用户请用英文逗号分隔**。 |
+| `TWITTER_USER` | `elonmusk` 或 `search:CONAN_tcg` | 支持用户名监控或关键词搜索监控（以 `search:` 开头）。**多个项请用逗号分隔**。 |
 | `DINGTALK_WEBHOOK` | `https://oapi.dingtalk.com/robot/send...` | 你的钉钉机器人 Webhook URL |
 
 ### 第四步：启用工作流
