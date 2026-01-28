@@ -26,24 +26,53 @@ NITTER_INSTANCES = [
     'https://nitter.net',
 ]
 
-def get_random_user_agent():
-    ua_list = [
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Edge/120.0.0.0"
-    ]
-    return random.choice(ua_list)
+def get_dynamic_instances():
+    """
+    从 status.d420.de 实时获取健康的 Nitter 实例
+    """
+    api_url = "https://status.d420.de/api/v1/instances"
+    try:
+        print("[系统] 正在从状态页同步健康实例...")
+        resp = requests.get(api_url, timeout=15)
+        if resp.status_code == 200:
+            data = resp.json()
+            hosts = data.get('hosts', [])
+            # 筛选准则：健康、是非黑名单、优先有 RSS (虽然我们不用 RSS，但通常这类实例更全)
+            # 按 points 降序排序，分高者优先
+            healthy_hosts = [
+                h['url'].rstrip('/') for h in hosts 
+                if h.get('healthy') and not h.get('is_bad_host')
+            ]
+            # 按分数从高到低排列
+            healthy_hosts.sort(key=lambda x: next((h.get('points', 0) for h in hosts if h['url'].rstrip('/') == x), 0), reverse=True)
+            
+            if healthy_hosts:
+                print(f"[系统] 成功发现 {len(healthy_hosts)} 个健康实例")
+                return healthy_hosts
+    except Exception as e:
+        print(f"[系统] 动态获取实例失败: {e}")
+    
+    print("[系统] 采用内置兜底实例列表")
+    return NITTER_INSTANCES
 
-def scrape_nitter_with_playwright(target):
+def scrape_nitter_with_playwright(target, dynamic_instances=None):
     """
     使用 Playwright 模拟浏览器访问 Nitter 并抓取最新推文
     """
     is_search = target.startswith('search:')
     keyword = target[7:] if is_search else target
     
-    instances = NITTER_INSTANCES.copy()
-    random.shuffle(instances)
+    # 优先使用动态获取的实例，如果没有则用内置的
+    instances = dynamic_instances if dynamic_instances else NITTER_INSTANCES.copy()
+    # 为了分布压力，我们在保持高分实例在前的前提下，对前 5 名进行小范围随机
+    if len(instances) > 5:
+        top_5 = instances[:5]
+        random.shuffle(top_5)
+        others = instances[5:]
+        random.shuffle(others)
+        instances = top_5 + others
+    else:
+        random.shuffle(instances)
     
     with sync_playwright() as p:
         # 启动浏览器 (头模式/无头模式取决于环境，GitHub Actions 建议 headless=True)
@@ -216,6 +245,9 @@ def main():
 
     print(f"[{datetime.now()}] 启动 Playwright 反检测监控模式...")
     
+    # 动态获取最新可用实例
+    dynamic_instances = get_dynamic_instances()
+
     # 加载状态
     if os.path.exists(LAST_ID_FILE):
         try:
@@ -227,7 +259,7 @@ def main():
     updated = False
     for target in USERS:
         try:
-            tweet = scrape_nitter_with_playwright(target)
+            tweet = scrape_nitter_with_playwright(target, dynamic_instances)
             if not tweet:
                 continue
             
