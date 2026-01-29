@@ -163,6 +163,9 @@ def scrape_nitter_with_playwright(target, dynamic_instances=None):
                             else:
                                 full_src = src
                             
+                            # 还原原始 Twitter 图片链接以提高代理稳定性
+                            full_src = get_original_image_url(full_src)
+                            
                             # 过滤掉一些明显的表情包或小图标 (可选)
                             if 'emoji' in src.lower() or 'hashtag_click' in src:
                                 continue
@@ -229,10 +232,13 @@ def send_dingtalk(webhook_url, tweet, target):
     images_md = ""
     if tweet.get('images'):
         for img_url in tweet['images']:
-            # weserv.nl 只需要去掉前面的协议头，或者直接使用编码后的完整 URL
-            # 某些 Nitter 实例的图片已经是外部链接 (如 pbs.twimg.com)，直接编码更稳妥
-            encoded_url = requests.utils.quote(img_url)
-            proxied_url = f"https://images.weserv.nl/?url={encoded_url}"
+            # 使用更稳健的编码方式，并将 https:// 替换为更简短的格式或直接保留
+            # wsrv.nl 是 weserv.nl 的更现代、更短的域名，在国内访问通常也更稳定
+            import urllib.parse
+            # wsrv.nl 支持直接传不带协议的 URL
+            clean_url = img_url.replace('https://', '').replace('http://', '')
+            encoded_url = urllib.parse.quote(clean_url)
+            proxied_url = f"https://wsrv.nl/?url={encoded_url}"
             images_md += f"\n\n![image]({proxied_url})"
 
     title = f"Twitter 监控: {target}"
@@ -268,6 +274,27 @@ def send_dingtalk(webhook_url, tweet, target):
     except Exception as e:
         print(f"[{target}] 钉钉请求异常: {e}")
         return False
+
+def get_original_image_url(nitter_url):
+    """
+    尝试从 Nitter 的代理 URL 中还原出 Twitter/X 的原始图片地址
+    例如: /pic/media%2FGDR-yXfbsAA_JmS.jpg -> pbs.twimg.com
+    """
+    import urllib.parse
+    try:
+        if 'pbs.twimg.com' in nitter_url:
+            return nitter_url
+            
+        # 解析路径
+        path = urllib.parse.unquote(nitter_url)
+        if '/pic/media/' in path or '/pic/orig/media/' in path:
+            media_part = path.split('/media/')[-1].split('?')[0]
+            if '.' in media_part:
+                media_id, ext = media_part.rsplit('.', 1)
+                return f"https://pbs.twimg.com/media/{media_id}?format={ext}&name=large"
+    except:
+        pass
+    return nitter_url
 
 def main():
     if not USERS:
