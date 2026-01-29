@@ -228,6 +228,16 @@ def send_dingtalk(webhook_url, tweet, target):
 
     retweet_flag = " 🔃 转发了" if tweet.get('is_retweet') else " 📝 发布了"
     
+    # 尝试翻译内容
+    print(f"[{target}] 正在翻译推文内容...")
+    translated_content = translate_text(tweet['content'])
+    
+    # 构造内容展示 (如果有翻译则显示翻译+原文)
+    if translated_content:
+        display_content = f"""**翻译**: {translated_content}\n\n**原文**: {tweet['content']}"""
+    else:
+        display_content = f"""{tweet['content']}"""
+
     # 构造图片 Markdown (使用 weserv.nl 代理解决国内钉钉加载不出的问题)
     images_md = ""
     if tweet.get('images'):
@@ -247,7 +257,7 @@ def send_dingtalk(webhook_url, tweet, target):
 **作者**: {tweet['author']}
 **时间**: {tweet['published']}
 
-> {tweet['content']}
+> {display_content}
 {images_md}
 
 ---
@@ -295,6 +305,39 @@ def get_original_image_url(nitter_url):
     except:
         pass
     return nitter_url
+
+def translate_text(text, target_lang='zh-CN'):
+    """
+    使用 Google Translate (GTX) 接口进行免费翻译
+    """
+    if not text or not text.strip():
+        return ""
+    
+    # 简单的翻译逻辑
+    try:
+        url = "https://translate.googleapis.com/translate_a/single"
+        params = {
+            "client": "gtx",
+            "sl": "auto",
+            "tl": target_lang,
+            "dt": "t",
+            "q": text
+        }
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        }
+        resp = requests.get(url, params=params, headers=headers, timeout=15)
+        resp.raise_for_status()
+        
+        # 解析返回的 JSON
+        data = resp.json()
+        if data and data[0]:
+            translated_parts = [part[0] for part in data[0] if part[0]]
+            return "".join(translated_parts)
+    except Exception as e:
+        print(f"[翻译] 失败: {e}")
+    
+    return None
 
 def main():
     if not USERS:
