@@ -28,7 +28,6 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-        if [ -f x/requirements.txt ]; then pip install -r x/requirements.txt; fi
         python -m playwright install chromium --with-deps
 
     - name: Run monitor script
@@ -40,7 +39,7 @@ jobs:
       run: |
         # 使用 timeout 确保在 6 小时之前停止，以便后面一步 Commit 能够运行
         # 330 分钟 = 5.5 小时
-        timeout 330m python x/twitter_monitor.py || echo "Monitor interval loop ended."
+        timeout 330m python twitter_monitor.py || echo "Monitor interval loop ended."
 
     - name: Commit and push if changed
       run: |
