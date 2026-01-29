@@ -16,6 +16,10 @@ WEBHOOK_URL = os.environ.get('DINGTALK_WEBHOOK')
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 LAST_ID_FILE = os.path.join(BASE_DIR, 'last_id.json')
 
+# 运行模式配置
+LOOP_MODE = os.environ.get('LOOP_MODE', 'false').lower() == 'true'
+INTERVAL = int(os.environ.get('LOOP_INTERVAL', '600')) # 默认 10 分钟 (600秒)
+
 # 备选 Nitter 实例 (仅作为域名参考)
 NITTER_INSTANCES = [
     'https://xcancel.com',
@@ -242,41 +246,55 @@ def main():
         print("没有配置监控目标")
         return
 
-    print(f"[{datetime.now()}] 启动 Playwright 反检测监控模式...")
+    print(f"[{datetime.now()}] 启动监控模式 (LOOP_MODE={LOOP_MODE}, INTERVAL={INTERVAL}s)...")
     
     # 从本地缓存加载可用实例
     instances = load_instances()
 
-    # 加载状态
-    if os.path.exists(LAST_ID_FILE):
-        try:
-            with open(LAST_ID_FILE, 'r', encoding='utf-8') as f:
-                last_ids = json.load(f)
-        except: last_ids = {}
-    else: last_ids = {}
+    while True:
+        cycle_start = time.time()
+        print(f"\n--- 启动新一轮监控轮询 [{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] ---")
+        
+        # 加载状态 (每轮都重新加载，防止外部手动修改或异常)
+        if os.path.exists(LAST_ID_FILE):
+            try:
+                with open(LAST_ID_FILE, 'r', encoding='utf-8') as f:
+                    last_ids = json.load(f)
+            except: last_ids = {}
+        else: last_ids = {}
 
-    updated = False
-    for target in USERS:
-        try:
-            tweet = scrape_nitter_with_playwright(target, instances)
-            if not tweet:
-                continue
-            
-            current_id = tweet['guid']
-            if last_ids.get(target) != current_id:
-                print(f"[{target}] 发现更新: {current_id}")
-                if send_dingtalk(WEBHOOK_URL, tweet, target):
-                    last_ids[target] = current_id
-                    updated = True
-            else:
-                print(f"[{target}] 无视更新")
-        except Exception as e:
-            print(f"[{target}] 总体处理异常: {e}")
+        updated = False
+        for target in USERS:
+            try:
+                tweet = scrape_nitter_with_playwright(target, instances)
+                if not tweet:
+                    continue
+                
+                current_id = tweet['guid']
+                if last_ids.get(target) != current_id:
+                    print(f"[{target}] 发现更新: {current_id}")
+                    if send_dingtalk(WEBHOOK_URL, tweet, target):
+                        last_ids[target] = current_id
+                        updated = True
+                else:
+                    print(f"[{target}] 无视更新 (ID 未变)")
+            except Exception as e:
+                print(f"[{target}] 处理异常: {e}")
 
-    if updated:
-        with open(LAST_ID_FILE, 'w', encoding='utf-8') as f:
-            json.dump(last_ids, f, indent=2, ensure_ascii=False)
-        print("状态文件已更新")
+        if updated:
+            with open(LAST_ID_FILE, 'w', encoding='utf-8') as f:
+                json.dump(last_ids, f, indent=2, ensure_ascii=False)
+            print("[系统] 状态文件已更新")
+
+        if not LOOP_MODE:
+            print("[系统] 非循环模式，任务结束。")
+            break
+        
+        # 计算需要 sleep 的时间，减去已经消耗的时间
+        elapsed = time.time() - cycle_start
+        sleep_time = max(10, INTERVAL - elapsed)
+        print(f"--- 轮询结束。耗时 {elapsed:.1f}s，准备休眠 {sleep_time:.1f}s ---\n")
+        time.sleep(sleep_time)
 
 if __name__ == "__main__":
     main()

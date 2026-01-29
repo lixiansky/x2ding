@@ -2,14 +2,16 @@ name: Twitter Monitor
 
 on:
   schedule:
-    # 每 10 分钟运行一次
-    - cron: '*/10 * * * *'
+    # 更改为每 6 小时运行一次，并在内部循环执行以保证精准定时
+    - cron: '0 */6 * * *'
   workflow_dispatch:
     # 允许手动触发
 
 jobs:
   monitor:
     runs-on: ubuntu-22.04
+    # 设置 6 小时超时限制（GitHub Actions 最大限制）
+    timeout-minutes: 360
     permissions:
       contents: write  # 允许提交代码（更新 last_id.txt）
     
@@ -33,29 +35,28 @@ jobs:
       env:
         TWITTER_USER: ${{ secrets.TWITTER_USER }}
         DINGTALK_WEBHOOK: ${{ secrets.DINGTALK_WEBHOOK }}
+        LOOP_MODE: 'true'
+        LOOP_INTERVAL: '600'
       run: |
-        # 尝试检测脚本位置并运行
-        if [ -f twitter_monitor.py ]; then
-          python twitter_monitor.py
-        elif [ -f x/twitter_monitor.py ]; then
-          python x/twitter_monitor.py
-        else
-          echo "Error: twitter_monitor.py not found!"
-          exit 1
-        fi
+        # 使用 timeout 确保在 6 小时之前停止，以便后面一步 Commit 能够运行
+        # 330 分钟 = 5.5 小时
+        timeout 330m python x/twitter_monitor.py || echo "Monitor interval loop ended."
 
     - name: Commit and push if changed
       run: |
         git config --global user.name 'GitHub Action'
         git config --global user.email 'action@github.com'
         
-        # 暂存所有变更（主要针对 last_id.txt）
+        # 强制拉取最新代码，防止运行期间有其他更新导致冲突
+        git pull origin main
+        
+        # 暂存所有变更（主要针对 last_id.json）
         git add .
         
         # 检查是否有变更
         if git diff --staged --quiet; then
           echo "No changes to commit"
         else
-          git commit -m "Update last_id.json [skip ci]"
+          git commit -m "Update last_id.json from loop [skip ci]"
           git push
         fi
