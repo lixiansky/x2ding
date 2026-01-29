@@ -145,15 +145,28 @@ def scrape_nitter_with_playwright(target, dynamic_instances=None):
                     # 2. 检查是否是转发
                     is_retweet = item.select_one('.retweet-header') is not None
 
-                    # 3. 提取图片
+                    # 3. 提取图片 (增加更多可能的 Nitter 图片选择器)
                     images = []
-                    # Nitter 的图片通常在 .attachment.image 或 .tweet-image 中
-                    img_els = item.select('.attachment.image img, .tweet-image img')
+                    img_els = item.select('.attachment.image img, .tweet-image img, .still-image img, .attachments img')
                     for img in img_els:
+                        # 排除头像 (通常在 .tweet-avatar 或 .profile-card-avatar 中)
+                        if any(c in str(img.parent.get('class', [])) for c in ['avatar', 'profile']):
+                            continue
+                            
                         src = img.get('src', '')
                         if src:
                             # 转换相对路径
-                            full_src = instance.rstrip('/') + src if src.startswith('/') else src
+                            if src.startswith('//'):
+                                full_src = 'https:' + src
+                            elif src.startswith('/'):
+                                full_src = instance.rstrip('/') + src
+                            else:
+                                full_src = src
+                            
+                            # 过滤掉一些明显的表情包或小图标 (可选)
+                            if 'emoji' in src.lower() or 'hashtag_click' in src:
+                                continue
+                                
                             images.append(full_src)
 
                     # 提取关键信息
@@ -216,8 +229,10 @@ def send_dingtalk(webhook_url, tweet, target):
     images_md = ""
     if tweet.get('images'):
         for img_url in tweet['images']:
-            # 编码 URL 并包装代理
-            proxied_url = f"https://images.weserv.nl/?url={requests.utils.quote(img_url.replace('https://', '').replace('http://', ''))}"
+            # weserv.nl 只需要去掉前面的协议头，或者直接使用编码后的完整 URL
+            # 某些 Nitter 实例的图片已经是外部链接 (如 pbs.twimg.com)，直接编码更稳妥
+            encoded_url = requests.utils.quote(img_url)
+            proxied_url = f"https://images.weserv.nl/?url={encoded_url}"
             images_md += f"\n\n![image]({proxied_url})"
 
     title = f"Twitter 监控: {target}"
