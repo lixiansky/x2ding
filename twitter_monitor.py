@@ -34,10 +34,11 @@ INSTANCES_FILE = os.path.join(BASE_DIR, 'instances.json')
 
 def get_random_user_agent():
     ua_list = [
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Edge/120.0.0.0"
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Edge/121.0.0.0",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:122.0) Gecko/20100101 Firefox/122.0"
     ]
     return random.choice(ua_list)
 
@@ -101,17 +102,29 @@ def scrape_nitter_with_playwright(target, dynamic_instances=None):
                 print(f"[{target}] 正在加载: {url}")
                 
                 # 开始加载并处理可能的挑战
-                response = page.goto(url, wait_until="networkidle", timeout=45000)
+                try:
+                    response = page.goto(url, wait_until="networkidle", timeout=45000)
+                    if response and response.status == 403:
+                        print(f"[{target}] 访问 {instance} 被拒 (403 Forbidden)")
+                        context.close()
+                        continue
+                except Exception as e:
+                    print(f"[{target}] 加载 {instance} 超时或失败: {e}")
+                    context.close()
+                    continue
                 
-                # 如果看到 "Verifying your browser"，等待其消失
-                if "Verifying your browser" in page.content():
-                    print(f"[{target}] 检测到浏览器验证，尝试等待...")
-                    # 某些验证需要一点时间自动跳转
-                    page.wait_for_timeout(5000)
+                # 智能等待浏览器验证或"稍等片刻"挑战
+                challenge_keywords = ["Verifying your browser", "Just a moment", "Checking your browser"]
+                for i in range(5): # 最多等待 25 秒
+                    content = page.content()
+                    if any(kw in content for kw in challenge_keywords):
+                        print(f"[{target}] 检测到浏览器验证 ({i+1}/5)，尝试等待...")
+                        page.wait_for_timeout(5000)
+                    else:
+                        break
                 
                 # 获取最终渲染后的 HTML
-                html = page.content()
-                soup = BeautifulSoup(html, 'html.parser')
+                soup = BeautifulSoup(page.content(), 'html.parser')
                 
                 # Nitter 页面推文解析逻辑
                 items = soup.select('.timeline-item')
@@ -120,13 +133,13 @@ def scrape_nitter_with_playwright(target, dynamic_instances=None):
                     context.close()
                     continue
                 
-                # 扫描策略：扫描前 5 条推文，找到第一条非置顶的、有效的内容
+                # 扫描策略：扫描前 8 条推文，找到第一条非置顶的、有效的内容
                 valid_tweets = []
-                for item in items[:8]: # 扩大扫描范围到前 8 条
-                    # 1. 检查是否是置顶推文
-                    is_pinned = item.select_one('.pinned') or "Pinned" in item.get_text()
+                for item in items[:8]:
+                    # 1. 检查是否是置顶推文 (移除 "Pinned" text 匹配以防止误伤推文内容)
+                    is_pinned = item.select_one('.pinned') is not None
                     if is_pinned:
-                        print(f"[{target}] 发现置顶推文，跳过扫描")
+                        print(f"[{target}] 发现置顶推文，跳过")
                         continue
                     
                     # 2. 检查是否是转发
