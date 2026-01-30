@@ -230,13 +230,19 @@ def send_dingtalk(webhook_url, tweet, target):
     
     # 尝试翻译内容
     print(f"[{target}] 正在翻译推文内容...")
-    translated_content = translate_text(tweet['content'])
+    
+    # 清理原文中的乱码或装饰性字符
+    raw_content = tweet['content']
+    # 移除特定乱码序列 €∋
+    clean_content = raw_content.replace('€∋', '').strip()
+    
+    translated_content = translate_text(clean_content)
     
     # 构造内容展示 (如果有翻译则显示翻译+原文)
     if translated_content:
-        display_content = f"""**翻译**: {translated_content}\n\n**原文**: {tweet['content']}"""
+        display_content = f"""**翻译**: {translated_content}\n\n**原文**: {raw_content}"""
     else:
-        display_content = f"""{tweet['content']}"""
+        display_content = f"""{raw_content}"""
 
     # 构造图片 Markdown (使用 weserv.nl 代理解决国内钉钉加载不出的问题)
     images_md = ""
@@ -291,19 +297,43 @@ def get_original_image_url(nitter_url):
     例如: /pic/media%2FGDR-yXfbsAA_JmS.jpg -> pbs.twimg.com
     """
     import urllib.parse
+    import re
     try:
         if 'pbs.twimg.com' in nitter_url:
             return nitter_url
             
-        # 解析路径
+        # 1. 处理 hex 编码的对象 (常见于 xcancel 等实例)
+        if '/pic/enc/' in nitter_url:
+            enc_part = nitter_url.split('/pic/enc/')[-1].split('?')[0]
+            try:
+                decoded = bytes.fromhex(enc_part).decode('utf-8')
+                if 'pbs.twimg.com' in decoded:
+                    return decoded
+            except:
+                pass
+
+        # 2. 处理标准 Nitter 路径
         path = urllib.parse.unquote(nitter_url)
-        if '/pic/media/' in path or '/pic/orig/media/' in path:
+        
+        # 匹配 /pic/media/ID.ext 或 /pic/orig/media/ID.ext
+        if '/media/' in path:
             media_part = path.split('/media/')[-1].split('?')[0]
             if '.' in media_part:
                 media_id, ext = media_part.rsplit('.', 1)
+                # 某些时候 ext 后面可能还跟着 &name=...
+                ext = ext.split('&')[0].split('?')[0]
                 return f"https://pbs.twimg.com/media/{media_id}?format={ext}&name=large"
-    except:
-        pass
+
+        # 3. 处理直接包含 pbs.twimg.com 的路径 (如 /pic/pbs.twimg.com/media/...)
+        if 'pbs.twimg.com' in path:
+            # 提取从 pbs.twimg.com 开始的部分
+            match = re.search(r'(pbs\.twimg\.com/media/[^?&]+)', path)
+            if match:
+                return "https://" + match.group(1)
+
+    except Exception as e:
+        print(f"[图片解析] 还原 URL 失败 {nitter_url}: {e}")
+        
     return nitter_url
 
 def translate_text(text, target_lang='zh-CN'):
