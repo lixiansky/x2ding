@@ -1,8 +1,14 @@
 # Twitter (X) 智能监控机器人 🤖
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![GitHub Actions](https://img.shields.io/badge/GitHub%20Actions-Enabled-brightgreen)](https://github.com/features/actions)
+[![Cloudflare Workers](https://img.shields.io/badge/Cloudflare-Workers-orange)](https://workers.cloudflare.com/)
+
 这是一个基于 **Playwright Stealth** 技术的工业级推文监控方案。它通过模拟真实浏览器行为,完美绕过屏蔽与机器人检测,将 Twitter 动态(含文字、图片、翻译、转发)实时推送到您的钉钉。
 
 本项目专为 **GitHub Actions** 设计,全自动运行,无需自备服务器,同时也支持本地循环模式。
+
+> 📖 **[快速开始指南](DEPLOYMENT.md)** | 🔧 **[Cloudflare Worker 部署教程](cloudflare-worker.js)**
 
 ## ✨ 核心亮点
 
@@ -17,7 +23,21 @@
 *   **🧠 智能过滤逻辑**: 自动识别并跳过博主的**置顶推文 (Pinned Tweets)**,确保只在发布真正的"新鲜项"时才报警。
 *   **⚡ 高频监控**: 每 10 分钟独立执行一次,避免传统循环任务的延迟累积问题。
 
+## 📊 功能特性
+
+| 特性 | 本项目 | 传统方案 |
+|------|--------|---------|
+| 监控频率 | 每 10 分钟 | 每小时或更长 |
+| 延迟时间 | 0-5 分钟 | 30-60 分钟 |
+| 图片显示 | ✅ 完美支持 | ❌ 经常失败 |
+| 反检测能力 | ✅ Playwright Stealth | ⚠️ 容易被封 |
+| 自动翻译 | ✅ 内置 | ❌ 不支持 |
+| 服务器成本 | 💰 完全免费 | 💸 需要服务器 |
+| 部署难度 | ⭐⭐ 简单 | ⭐⭐⭐⭐ 复杂 |
+
 ## 🚀 部署指南
+
+> 💡 **提示**: 完整的图文教程请查看 [DEPLOYMENT.md](DEPLOYMENT.md)
 
 ### 第一步: Fork 本仓库
 
