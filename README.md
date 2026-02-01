@@ -49,16 +49,31 @@
 2. **安全设置**: 选择"自定义关键词",填入: `Twitter`。
 3. 复制生成的 Webhook URL。
 
-### 第三步: 配置 Cloudflare 图片代理(可选但推荐)
+### 第三步: 配置图片访问方案
 
-> **为什么需要图片代理?** 
-> Twitter 图片在国内访问受限,钉钉客户端无法直接加载。使用 Cloudflare Workers 可以完美解决此问题。
+> **为什么需要配置图片访问?** 
+> Twitter 图片在国内访问受限,钉钉客户端无法直接加载。本项目提供两种解决方案:
+
+#### 方案 1: 图床上传 (推荐)
+
+将 Twitter 图片自动上传到 **ImgBB** 图床,国内访问非常稳定。
+
+**优点:**
+- ✅ 无需自己部署服务
+- ✅ 国内访问速度快
+- ✅ 上传失败会自动降级到代理服务
+
+**要求:**
+- 需要在 GitHub Secrets 中配置 `IMGBB_API_KEY` (访问 [api.imgbb.com](https://api.imgbb.com/) 免费获取)。
+
+#### 方案 2: Cloudflare Workers 代理 (可选)
+
+如果你不想使用图床,可以部署 Cloudflare Workers 代理:
 
 1. 登录 [Cloudflare Dashboard](https://dash.cloudflare.com/)
 2. 进入 **Workers & Pages** → **Create Worker**
 3. 复制 `cloudflare-worker.js` 的内容并粘贴
 4. 点击 **Deploy** 部署
-5. 复制生成的 Worker URL(类似 `https://img-proxy.your-name.workers.dev`)
 
 ### 第四步: 设置 GitHub Secrets
 
@@ -66,9 +81,12 @@
 
 | Secret Name | 示例 Value | 说明 |
 |-------------|------------|------|
-| `TWITTER_USER` | `elonmusk` 或 `search:AI` | 监控目标。**多个请用英文逗号分隔**。 |
-| `DINGTALK_WEBHOOK` | `https://oapi.dingtalk.com/...` | 钉钉机器人 Webhook 地址 |
-| `CLOUDFLARE_PROXY` | `https://img-proxy.xxx.workers.dev` | [可选] Cloudflare Worker 代理地址 |
+| `TWITTER_USER` | `elonmusk` | 监控目标, 多个用逗号隔开 |
+| `DINGTALK_WEBHOOK` | `https://oapi...` | 钉钉机器人 Webhook |
+| `IMGBB_API_KEY` | `your-imgbb-key` | **[重要]** ImgBB 的 API Key |
+| `USE_IMAGE_BED` | `true` | 是否启用图床 (默认 true) |
+| `CLOUDFLARE_PROXY` | `https://...` | [可选] 代理地址 |
+
 
 ### 第五步: 启用自动化
 
@@ -86,12 +104,21 @@
 *   **实例更新任务**: 每 6 小时更新一次健康的 Nitter 实例列表
 *   **优势**: 避免长时间循环任务的延迟累积,每次执行快速且独立
 
-### 图片代理流程
+
+### 图片访问流程
 
 ```
-Twitter 图片 → Cloudflare Worker → 钉钉客户端
-              (国内可访问)
+方案 1 (默认): Twitter 图片 → 下载 → 上传到图床 → 钉钉客户端
+                                  (国内可访问)
+
+方案 2 (备用): Twitter 图片 → Cloudflare Worker/wsrv.nl → 钉钉客户端
+                              (代理服务)
 ```
+
+**智能降级策略:**
+1. 优先尝试上传到图床(ImgBB → SM.MS → Telegraph)
+2. 如果图床失败,自动降级到 Cloudflare Worker 代理
+3. 如果未配置代理,最终降级到 wsrv.nl 公共代理
 
 ### 状态管理
 
@@ -110,7 +137,15 @@ Twitter 图片 → Cloudflare Worker → 钉钉客户端
 ## ❓ 常见问题
 
 **Q: 为什么图片显示异常?**  
-A: 请确保已配置 `CLOUDFLARE_PROXY`。如果未配置,系统会回退到 `wsrv.nl`,但稳定性较差。
+A: 默认使用图床上传,无需额外配置。如果图床失败,会自动降级到代理服务。你可以通过设置 `USE_IMAGE_BED=false` 禁用图床,直接使用代理。
+
+**Q: 图床服务需要注册吗?**  
+A: SM.MS 和 Telegraph 无需注册即可使用。ImgBB 需要免费注册获取 API Key,但可选。
+
+**Q: 如何获取图床 API Key?**  
+A: 
+- **SM.MS**: 访问 https://sm.ms/home/apitoken 注册并获取 Token(可选,提高稳定性)
+- **ImgBB**: 访问 https://api.imgbb.com/ 免费注册获取 API Key(可选)
 
 **Q: GitHub Actions 免费额度够用吗?**  
 A: 完全够用!公开仓库无限免费,私有仓库每月 2000 分钟。每次执行约 3-5 分钟,每天 144 次,公开仓库完全免费。
@@ -128,6 +163,12 @@ python twitter_monitor.py
 A: 风险极低。我们使用 Playwright Stealth 模拟真实浏览器,且每次请求间隔 10 分钟,使用多个 Nitter 实例轮换。
 
 ## 📝 更新日志
+
+### v2.1 (2026-02)
+- ✨ 新增图床上传功能(SM.MS、Telegraph、ImgBB)
+- ✨ 智能降级策略:图床 → 代理 → 公共代理
+- 🎯 默认启用图床,无需额外部署
+- 🌐 完美解决国内图片访问问题
 
 ### v2.0 (2026-02)
 - ✨ 改用标准 GitHub Actions 调度,解决延迟问题

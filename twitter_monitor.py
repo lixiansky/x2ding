@@ -7,6 +7,8 @@ from datetime import datetime
 from playwright.sync_api import sync_playwright
 from playwright_stealth import stealth_sync
 from bs4 import BeautifulSoup
+import tempfile
+import base64
 
 # 配置
 USERS_STR = os.environ.get('TWITTER_USER', 'elonmusk')
@@ -218,6 +220,59 @@ def scrape_nitter_with_playwright(target, dynamic_instances=None):
         browser.close()
     return None
 
+def upload_to_imgbb(image_url):
+    """
+    上传图片到 ImgBB 图床
+    需要配置环境变量: IMGBB_API_KEY
+    """
+    api_key = os.environ.get('IMGBB_API_KEY', '').strip()
+    if not api_key:
+        print("[图床] ImgBB 未配置 API Key, 无法上传")
+        return None
+    
+    try:
+        # 下载图片
+        print(f"[图床] 正在从 {image_url} 下载图片...")
+        img_response = requests.get(image_url, timeout=30, headers={
+            'User-Agent': get_random_user_agent(),
+            'Referer': 'https://twitter.com/'
+        })
+        img_response.raise_for_status()
+        
+        # 转换为 base64
+        img_base64 = base64.b64encode(img_response.content).decode('utf-8')
+        
+        # 上传到 ImgBB
+        print("[图床] 正在上传到 ImgBB...")
+        upload_response = requests.post(
+            'https://api.imgbb.com/1/upload',
+            data={
+                'key': api_key,
+                'image': img_base64
+            },
+            timeout=30
+        )
+        result = upload_response.json()
+        
+        if result.get('success'):
+            url = result['data']['url']
+            print(f"[图床] ImgBB 上传成功: {url}")
+            return url
+        else:
+            print(f"[图床] ImgBB 上传失败: {result}")
+            return None
+    except Exception as e:
+        print(f"[图床] ImgBB 上传异常: {e}")
+        return None
+
+def upload_image_to_bed(image_url):
+    """
+    上传图片到 ImgBB 图床
+    """
+    return upload_to_imgbb(image_url)
+
+
+
 def send_dingtalk(webhook_url, tweet, target):
     """
     发送钉钉消息
@@ -244,26 +299,36 @@ def send_dingtalk(webhook_url, tweet, target):
     else:
         display_content = f"""{raw_content}"""
 
-    # 构造图片 Markdown (优先使用 Cloudflare 代理,回退到 wsrv.nl)
+    # 构造图片 Markdown (优先使用图床,回退到代理)
     images_md = ""
     if tweet.get('images'):
-        # 获取图片代理配置
-        cloudflare_proxy = os.environ.get('CLOUDFLARE_PROXY', '').strip()
+        # 检查是否启用图床上传
+        use_image_bed = os.environ.get('USE_IMAGE_BED', 'true').lower() == 'true'
         
         for img_url in tweet['images']:
             import urllib.parse
             
-            if cloudflare_proxy:
-                # 使用 Cloudflare Worker 代理 (推荐)
-                encoded_url = urllib.parse.quote(img_url)
-                proxied_url = f"{cloudflare_proxy.rstrip('/')}?url={encoded_url}"
-            else:
-                # 回退到 wsrv.nl 代理
-                clean_url = img_url.replace('https://', '').replace('http://', '')
-                encoded_url = urllib.parse.quote(clean_url)
-                proxied_url = f"https://wsrv.nl/?url={encoded_url}"
+            final_url = None
             
-            images_md += f"\n\n![image]({proxied_url})"
+            # 方案1: 尝试上传到图床 (推荐)
+            if use_image_bed:
+                print(f"[{target}] 正在上传图片到图床...")
+                final_url = upload_image_to_bed(img_url)
+            
+            # 方案2: 如果图床失败,使用代理服务
+            if not final_url:
+                cloudflare_proxy = os.environ.get('CLOUDFLARE_PROXY', '').strip()
+                if cloudflare_proxy:
+                    encoded_url = urllib.parse.quote(img_url)
+                    final_url = f"{cloudflare_proxy.rstrip('/')}?url={encoded_url}"
+                else:
+                    # 回退到 wsrv.nl 代理
+                    clean_url = img_url.replace('https://', '').replace('http://', '')
+                    encoded_url = urllib.parse.quote(clean_url)
+                    final_url = f"https://wsrv.nl/?url={encoded_url}"
+            
+            if final_url:
+                images_md += f"\n\n![image]({final_url})"
 
     title = f"Twitter 监控: {target}"
     text = f"""## {target}{retweet_flag} 推文
