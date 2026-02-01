@@ -116,7 +116,7 @@
 ```
 
 **智能降级策略:**
-1. 优先尝试上传到图床(ImgBB → SM.MS → Telegraph)
+1. 优先尝试上传到 ImgBB 图床
 2. 如果图床失败,自动降级到 Cloudflare Worker 代理
 3. 如果未配置代理,最终降级到 wsrv.nl 公共代理
 
@@ -140,12 +140,13 @@
 A: 默认使用图床上传,无需额外配置。如果图床失败,会自动降级到代理服务。你可以通过设置 `USE_IMAGE_BED=false` 禁用图床,直接使用代理。
 
 **Q: 图床服务需要注册吗?**  
-A: SM.MS 和 Telegraph 无需注册即可使用。ImgBB 需要免费注册获取 API Key,但可选。
+A: ImgBB 需要免费注册获取 API Key。访问 [api.imgbb.com](https://api.imgbb.com/) 即可快速注册。
 
-**Q: 如何获取图床 API Key?**  
+**Q: 如何获取 ImgBB API Key?**  
 A: 
-- **SM.MS**: 访问 https://sm.ms/home/apitoken 注册并获取 Token(可选,提高稳定性)
-- **ImgBB**: 访问 https://api.imgbb.com/ 免费注册获取 API Key(可选)
+1. 访问 https://api.imgbb.com/
+2. 点击 "Get API Key" 免费注册
+3. 复制生成的 API Key 到 GitHub Secrets 的 `IMGBB_API_KEY`
 
 **Q: GitHub Actions 免费额度够用吗?**  
 A: 完全够用!公开仓库无限免费,私有仓库每月 2000 分钟。每次执行约 3-5 分钟,每天 144 次,公开仓库完全免费。
@@ -165,9 +166,9 @@ A: 风险极低。我们使用 Playwright Stealth 模拟真实浏览器,且每�
 ## 📝 更新日志
 
 ### v2.1 (2026-02)
-- ✨ 新增图床上传功能(SM.MS、Telegraph、ImgBB)
+- ✨ 新增 ImgBB 图床上传功能
 - ✨ 智能降级策略:图床 → 代理 → 公共代理
-- 🎯 默认启用图床,无需额外部署
+- 🎯 默认启用图床,提升国内访问稳定性
 - 🌐 完美解决国内图片访问问题
 
 ### v2.0 (2026-02)
