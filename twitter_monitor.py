@@ -244,17 +244,25 @@ def send_dingtalk(webhook_url, tweet, target):
     else:
         display_content = f"""{raw_content}"""
 
-    # 构造图片 Markdown (使用 weserv.nl 代理解决国内钉钉加载不出的问题)
+    # 构造图片 Markdown (优先使用 Cloudflare 代理,回退到 wsrv.nl)
     images_md = ""
     if tweet.get('images'):
+        # 获取图片代理配置
+        cloudflare_proxy = os.environ.get('CLOUDFLARE_PROXY', '').strip()
+        
         for img_url in tweet['images']:
-            # 使用更稳健的编码方式，并将 https:// 替换为更简短的格式或直接保留
-            # wsrv.nl 是 weserv.nl 的更现代、更短的域名，在国内访问通常也更稳定
             import urllib.parse
-            # wsrv.nl 支持直接传不带协议的 URL
-            clean_url = img_url.replace('https://', '').replace('http://', '')
-            encoded_url = urllib.parse.quote(clean_url)
-            proxied_url = f"https://wsrv.nl/?url={encoded_url}"
+            
+            if cloudflare_proxy:
+                # 使用 Cloudflare Worker 代理 (推荐)
+                encoded_url = urllib.parse.quote(img_url)
+                proxied_url = f"{cloudflare_proxy.rstrip('/')}?url={encoded_url}"
+            else:
+                # 回退到 wsrv.nl 代理
+                clean_url = img_url.replace('https://', '').replace('http://', '')
+                encoded_url = urllib.parse.quote(clean_url)
+                proxied_url = f"https://wsrv.nl/?url={encoded_url}"
+            
             images_md += f"\n\n![image]({proxied_url})"
 
     title = f"Twitter 监控: {target}"

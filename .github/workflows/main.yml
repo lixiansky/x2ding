@@ -2,60 +2,62 @@ name: Twitter Monitor
 
 on:
   schedule:
-    # 更改为每 6 小时运行一次，并在内部循环执行以保证精准定时
-    - cron: '0 */6 * * *'
+    # 每 10 分钟运行一次 - 标准调度模式,避免延迟累积
+    - cron: '*/10 * * * *'
   workflow_dispatch:
     # 允许手动触发
 
 jobs:
   monitor:
-    runs-on: ubuntu-22.04
-    # 设置 6 小时超时限制（GitHub Actions 最大限制）
-    timeout-minutes: 360
+    runs-on: ubuntu-latest
+    # 单次执行最多 8 分钟
+    timeout-minutes: 8
     permissions:
-      contents: write  # 允许提交代码（更新 last_id.txt）
+      contents: write  # 允许提交代码(更新 last_id.json)
     
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
 
     - name: Set up Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
-        python-version: '3.9'
+        python-version: '3.11'
+        cache: 'pip'  # 缓存 pip 依赖,加速安装
+
+    - name: Cache Playwright browsers
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/ms-playwright
+        key: playwright-${{ runner.os }}-${{ hashFiles('requirements.txt') }}
+        restore-keys: |
+          playwright-${{ runner.os }}-
 
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-        python -m playwright install chromium --with-deps
+        pip install -r requirements.txt
+        playwright install chromium --with-deps
 
-    - name: Run monitor script
+    - name: Run monitor script (single check)
       env:
         TWITTER_USER: ${{ secrets.TWITTER_USER }}
         DINGTALK_WEBHOOK: ${{ secrets.DINGTALK_WEBHOOK }}
-        LOOP_MODE: 'true'
-        LOOP_INTERVAL: '600'
-      run: |
-        # 使用 timeout 确保在 6 小时之前停止，以便后面一步 Commit 能够运行
-        # 330 分钟 = 5.5 小时
-        timeout 330m python twitter_monitor.py || echo "Monitor interval loop ended."
+        CLOUDFLARE_PROXY: ${{ secrets.CLOUDFLARE_PROXY }}
+        LOOP_MODE: 'false'  # 关闭循环模式,每次独立执行
+      run: python twitter_monitor.py
 
     - name: Commit and push if changed
       run: |
-        git config --global user.name 'GitHub Action'
-        git config --global user.email 'action@github.com'
+        git config --global user.name 'github-actions[bot]'
+        git config --global user.email 'github-actions[bot]@users.noreply.github.com'
         
-        # 强制拉取最新代码，防止运行期间有其他更新导致冲突
-        git pull origin main
-        
-        # 暂存所有变更（主要针对 last_id.json）
-        git add .
+        git add last_id.json
         
         # 检查是否有变更
         if git diff --staged --quiet; then
           echo "No changes to commit"
         else
-          git commit -m "Update last_id.json from loop [skip ci]"
+          git commit -m "chore: update last_id.json [skip ci]"
           git push
         fi
