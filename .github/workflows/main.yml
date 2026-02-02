@@ -44,6 +44,7 @@ jobs:
         TWITTER_USER: ${{ secrets.TWITTER_USER }}
         DINGTALK_WEBHOOK: ${{ secrets.DINGTALK_WEBHOOK }}
         CLOUDFLARE_PROXY: ${{ secrets.CLOUDFLARE_PROXY }}
+        IMGBB_API_KEY: ${{ secrets.IMGBB_API_KEY }}
         LOOP_MODE: 'false'  # 关闭循环模式,每次独立执行
       run: python twitter_monitor.py
 
