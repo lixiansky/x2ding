@@ -174,6 +174,42 @@ def scrape_nitter_with_playwright(target, dynamic_instances=None):
                                 
                             images.append(full_src)
 
+                    # 4. 提取视频 (新增)
+                    video_url = None
+                    try:
+                        video_el = item.select_one('video source')
+                        if not video_el:
+                            video_el = item.select_one('video')
+                        
+                        if video_el:
+                            # 尝试获取封面图作为额外图片
+                            poster_el = item.select_one('video')
+                            if poster_el:
+                                poster = poster_el.get('poster', '')
+                                if poster:
+                                    if poster.startswith('//'):
+                                        full_poster = 'https:' + poster
+                                    elif poster.startswith('/'):
+                                        full_poster = instance.rstrip('/') + poster
+                                    else:
+                                        full_poster = poster
+                                    # 尝试还原原始封面图地址并加入图片列表
+                                    full_poster = get_original_image_url(full_poster)
+                                    if full_poster not in images:
+                                        images.append(full_poster)
+
+                            # 提取视频流地址
+                            v_src = video_el.get('src', '')
+                            if v_src:
+                                if v_src.startswith('//'):
+                                    video_url = 'https:' + v_src
+                                elif v_src.startswith('/'):
+                                    video_url = instance.rstrip('/') + v_src
+                                else:
+                                    video_url = v_src
+                    except Exception as e:
+                        print(f"[{target}] 视频提取异常: {e}")
+
                     # 提取关键信息
                     content_el = item.select_one('.tweet-content')
                     link_el = item.select_one('.tweet-link')
@@ -194,7 +230,8 @@ def scrape_nitter_with_playwright(target, dynamic_instances=None):
                         'author': author_el.get_text(strip=True) if author_el else keyword,
                         'guid': tweet_id,
                         'is_retweet': is_retweet,
-                        'images': images
+                        'images': images,
+                        'video_url': video_url
                     }
                     valid_tweets.append(tweet_data)
                     
@@ -329,6 +366,10 @@ def send_dingtalk(webhook_url, tweet, target):
             
             if final_url:
                 images_md += f"\n\n![image]({final_url})"
+
+    # 如果有视频链接，添加观看链接
+    if tweet.get('video_url'):
+        images_md += f"\n\n[🎬 点击观看视频]({tweet['video_url']})"
 
     title = f"Twitter 监控: {target}"
     text = f"""## {target}{retweet_flag} 推文
